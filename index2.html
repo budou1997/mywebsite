@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 多彩星河手势魔法</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <style>
+        body { 
+            margin: 0; overflow: hidden; background-color: #020205; /* 深空蓝黑背景 */
+            font-family: 'Segoe UI', sans-serif; 
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        #camera-container {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 240px; height: 180px;
+            border-radius: 12px; overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: #222; z-index: 100;
+            box-shadow: 0 0 20px rgba(0,0,0,0.6);
+        }
+        #videoElement { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #status-bar {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            color: rgba(255, 255, 255, 0.8); font-size: 18px;
+            background: rgba(20, 20, 20, 0.8);
+            padding: 12px 25px; border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.1); pointer-events: none;
+        }
+        .highlight { font-weight: bold; font-size: 22px; margin-left: 8px; transition: color 0.3s ease;}
+    </style>
+</head>
+<body>
+
+    <div id="status-bar">
+        AI 状态: <span id="gesture-name" class="highlight" style="color: #ffffff;">多彩星河 (初始化中...)</span>
+    </div>
+    <canvas id="particleCanvas"></canvas>
+    <div id="camera-container">
+        <video id="videoElement" playsinline></video>
+    </div>
+
+<script>
+    const videoElement = document.getElementById('videoElement');
+    const canvas = document.getElementById('particleCanvas');
+    const ctx = canvas.getContext('2d');
+    const gestureNameSpan = document.getElementById('gesture-name');
+
+    let width, height;
+    let particles = [];
+    const particleCount = 750; // 稍微增加一点粒子，让色彩更丰富
+    let bgParticles = [];
+    const bgParticleCount = 300; 
+
+    
+    const colors = {
+        '0': '220, 230, 255', // 这个默认白色现在只用于状态栏文字了
+        '1': '255, 50, 100',  
+        '2': '50, 255, 100',  
+        '3': '50, 200, 255',  
+        '4': '200, 50, 255',  
+        'heart': '255, 80, 150' 
+    };
+
+    // --- ★★★ 新增：银河系专属色板 ★★★ ---
+    const galaxyPalette = [
+        '65, 105, 225',  // 皇家蓝 (RoyalBlue) - 主色调
+        '138, 43, 226',  // 蓝紫色 (BlueViolet) - 主色调
+        '0, 191, 255',   // 深天蓝 (DeepSkyBlue) - 亮部
+        '218, 112, 214', // 兰花紫 (Orchid) - 柔和调
+        '176, 224, 230', // 粉末蓝 (PowderBlue) - 高光
+        '255, 215, 000'  // 金色 (Gold) - 点缀，少量
+    ];
+
+    let currentRGB = colors['0'];
+    let lastGesture = '0'; // 初始状态设为 '0'
+    let time = 0;
+
+    function initSize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', initSize);
+    initSize();
+
+    function drawHeartPath(ctx, x, y, size) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - size * 0.2);
+        ctx.bezierCurveTo(x - size * 0.6, y - size * 0.7, x - size * 0.8, y + size * 0.1, x, y + size * 0.6);
+        ctx.bezierCurveTo(x + size * 0.8, y + size * 0.1, x + size * 0.6, y - size * 0.7, x, y - size * 0.2);
+        ctx.closePath();
+    }
+
+    function getGalaxyPoint() {
+        const centerX = width / 2; const centerY = height / 2;
+        const angle = Math.PI / 6; 
+        const distAlong = (Math.random() - 0.5) * Math.max(width, height) * 1.3;
+        const spread = Math.min(width, height) * 0.25;
+        const distAcross = (Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? -1 : 1)) * spread;
+        const x = centerX + distAlong * Math.cos(angle) - distAcross * Math.sin(angle);
+        const y = centerY + distAlong * Math.sin(angle) + distAcross * Math.cos(angle);
+        return { x, y };
+    }
+
+
+    // --- 背景星星 (保持不变) ---
+    class BgParticle {
+        constructor() {
+            this.x = Math.random() * width; this.y = Math.random() * height;
+            this.vx = (Math.random() - 0.5) * 0.3; this.vy = (Math.random() - 0.5) * 0.3;
+            this.size = Math.random() * 1.2 + 0.3; 
+            this.flashPhase = Math.random() * Math.PI * 2; 
+            this.flashSpeed = 0.01 + Math.random() * 0.03; 
+        }
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            if(this.x < 0) this.x = width; else if(this.x > width) this.x = 0;
+            if(this.y < 0) this.y = height; else if(this.y > height) this.y = 0;
+            this.flashPhase += this.flashSpeed;
+        }
+        draw() {
+            const opacity = (Math.sin(this.flashPhase) + 1) / 2 * 0.8 + 0.1;
+            ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            // 背景星星保持微蓝白色，衬托前景
+            ctx.fillStyle = `rgba(200, 220, 255, ${opacity})`; 
+            ctx.fill();
+        }
+    }
+
+
+    // --- 主粒子类 (核心升级：个体颜色属性) ---
+    class Particle {
+        constructor() {
+            const galaxyPos = getGalaxyPoint();
+            this.x = galaxyPos.x; this.y = galaxyPos.y;
+            this.vx = 0; this.vy = 0;
+            this.tx = this.x; this.ty = this.y;
+            this.baseSize = Math.random() * 3 + 1.5; 
+            this.size = this.baseSize;
+            this.jitterX = (Math.random() - 0.5) * 15; this.jitterY = (Math.random() - 0.5) * 15;
+            this.phase = Math.random() * Math.PI * 2; 
+
+            // ★★★ 核心改动：给每个粒子随机分配一个银河颜色 ★★★
+            // 稍微加一点随机性，让金色出现得少一点
+            let paletteIndex = Math.floor(Math.random() * galaxyPalette.length);
+            if (galaxyPalette[paletteIndex] === '255, 215, 000' && Math.random() > 0.2) {
+                 paletteIndex = 0; // 80% 概率把金色替换成主蓝色，避免金色太多
+            }
+            this.myGalaxyColor = galaxyPalette[paletteIndex];
+        }
+
+        update() {
+            const baseBeat = 1 + Math.sin(time * 2 + this.phase) * 0.15;
+            this.size = this.baseSize * baseBeat;
+
+            if (this.tx !== null && this.ty !== null) {
+                let targetX = this.tx; let targetY = this.ty;
+                if (lastGesture === 'heart') {
+                    const centerX = width / 2;
+                    const centerY = height / 2 + (Math.min(width, height) / 35) * 5;
+                    const bigHeartBeat = 1 + Math.abs(Math.sin(time * 3)) * 0.08;
+                    let dx = this.tx - centerX; let dy = this.ty - centerY;
+                    targetX = centerX + dx * bigHeartBeat; targetY = centerY + dy * bigHeartBeat;
+                    targetX += this.jitterX; targetY += this.jitterY;
+                    this.size *= bigHeartBeat;
+                } else if (lastGesture === '0') {
+                     targetX += (Math.random()-0.5)*2; targetY += (Math.random()-0.5)*2;
+                }
+                this.x += (targetX - this.x) * 0.1;
+                this.y += (targetY - this.y) * 0.1;
+            }
+        }
+
+        // --- ★★★ 核心改动：绘制时智能选择颜色 ★★★ ---
+        draw() {
+            // 决定当前使用哪个颜色：如果是银河状态('0')，用自己的颜色；否则用全局统一颜色
+            const colorToUse = lastGesture === '0' ? this.myGalaxyColor : currentRGB;
+            
+            const glowOpacity = lastGesture === '0' ? 0.2 : 0.25;
+            ctx.fillStyle = `rgba(${colorToUse}, ${glowOpacity})`; 
+            drawHeartPath(ctx, this.x, this.y, this.size * 3); ctx.fill();
+            ctx.fillStyle = `rgba(${colorToUse}, 0.9)`;
+            drawHeartPath(ctx, this.x, this.y, this.size * 1.2); ctx.fill();
+        }
+    }
+
+    initSize();
+    for(let i=0; i<particleCount; i++) particles.push(new Particle());
+    for(let i=0; i<bgParticleCount; i++) bgParticles.push(new BgParticle());
+
+    // --- 点阵生成 (保持不变) ---
+    function getPoints(type) {
+        const points = [];
+        if (type === 'heart') {
+            const scale = Math.min(width, height) / 35; 
+            const centerX = width / 2; const centerY = height / 2 + scale * 5; 
+            for (let i = 0; i < particleCount; i++) {
+                const t = (Math.PI * 2 * i) / particleCount;
+                const x = 16 * Math.pow(Math.sin(t), 3);
+                const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                points.push({ x: centerX + x * scale, y: centerY + y * scale });
+            }
+        } else {
+            const tCanvas = document.createElement('canvas');
+            tCanvas.width = width; tCanvas.height = height;
+            const tCtx = tCanvas.getContext('2d');
+            const fontSize = Math.floor(Math.min(width, height) * 0.6);
+            tCtx.font = `bold ${fontSize}px Arial`;
+            tCtx.textAlign = "center"; tCtx.textBaseline = "middle";
+            tCtx.fillStyle = "white";
+            tCtx.fillText(type, width/2, height/2);
+            const data = tCtx.getImageData(0,0,width,height).data;
+            const step = Math.floor(width / 40); 
+            for(let y=0; y<height; y+=step) {
+                for(let x=0; x<width; x+=step) {
+                    if(data[(y*width+x)*4] > 128) points.push({x,y});
+                }
+            }
+        }
+        return points;
+    }
+
+    function triggerMorph(type) {
+        if (type === lastGesture) return;
+        lastGesture = type;
+
+        if (type === '0') {
+            // 回归银河：不需要设置全局 currentRGB，因为粒子会用自己的颜色
+            gestureNameSpan.style.color = `rgb(255, 255, 255)`; // 状态栏文字变白
+            particles.forEach(p => {
+                const galaxyPos = getGalaxyPoint();
+                p.tx = galaxyPos.x; p.ty = galaxyPos.y;
+            });
+        } else {
+            // 变成数字/心形：设置全局颜色
+            currentRGB = colors[type];
+            const points = getPoints(type);
+            if (points.length === 0 && type !== 'heart') return;
+
+            gestureNameSpan.style.color = `rgb(${colors[type]})`; 
+            particles.forEach((p, i) => {
+                const target = points[i % points.length];
+                p.tx = target.x; p.ty = target.y;
+            });
+        }
+    }
+
+    function animate() {
+        time += 0.04;
+        ctx.clearRect(0, 0, width, height);
+        ctx.globalCompositeOperation = 'lighter'; 
+        bgParticles.forEach(p => { p.update(); p.draw(); });
+        particles.forEach(p => { p.update(); p.draw(); });
+        requestAnimationFrame(animate);
+    }
+    animate();
+
+    // --- AI 识别 (保持不变) ---
+    function calcDistance(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+    function countExtendedFingers(landmarks) {
+        let count = 0;
+        [8, 12, 16, 20].forEach((tipIdx, i) => {
+            if (landmarks[tipIdx].y < landmarks[[6, 10, 14, 18][i]].y) count++;
+        });
+        return count; 
+    }
+    function onResults(results) {
+        if (gestureNameSpan.innerText.includes("初始化")) {
+             gestureNameSpan.innerText = "多彩星河 (准备就绪)";
+        }
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const lm = results.multiHandLandmarks[0];
+            const thumbIndexDist = calcDistance(lm[4], lm[8]);
+            if (thumbIndexDist < 0.09) {
+                gestureNameSpan.innerText = "比心 ❤️";
+                triggerMorph('heart');
+                return; 
+            }
+            const fingers = countExtendedFingers(lm);
+            if (fingers >= 1 && fingers <= 4) {
+                gestureNameSpan.innerText = `数字 ${fingers}`;
+                triggerMorph(fingers.toString());
+            } else {
+                gestureNameSpan.innerText = "多彩星河"; 
+                triggerMorph('0');
+            }
+        } else {
+            gestureNameSpan.innerText = "多彩星河 (等待手势)";
+            triggerMorph('0');
+        }
+    }
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0, 
+        minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+    });
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({image: videoElement}); },
+        width: 640, height: 480
+    });
+    camera.start();
+
+</script>
+</body>
+</html>
