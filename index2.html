@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 多彩星河手势魔法</title>
+    <title>AI 宇宙星球手势魔法 - 完美修复版</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -52,33 +52,28 @@
 
     let width, height;
     let particles = [];
-    const particleCount = 750; // 稍微增加一点粒子，让色彩更丰富
+    const particleCount = 800; 
     let bgParticles = [];
     const bgParticleCount = 300; 
 
-    
     const colors = {
-        '0': '220, 230, 255', // 这个默认白色现在只用于状态栏文字了
+        '0': '220, 230, 255', 
         '1': '255, 50, 100',  
         '2': '50, 255, 100',  
         '3': '50, 200, 255',  
-        '4': '200, 50, 255',  
+        '4': '200, 50, 255',
+        '5': '0, 255, 255',   
         'heart': '255, 80, 150' 
     };
 
-    // --- ★★★ 新增：银河系专属色板 ★★★ ---
     const galaxyPalette = [
-        '65, 105, 225',  // 皇家蓝 (RoyalBlue) - 主色调
-        '138, 43, 226',  // 蓝紫色 (BlueViolet) - 主色调
-        '0, 191, 255',   // 深天蓝 (DeepSkyBlue) - 亮部
-        '218, 112, 214', // 兰花紫 (Orchid) - 柔和调
-        '176, 224, 230', // 粉末蓝 (PowderBlue) - 高光
-        '255, 215, 000'  // 金色 (Gold) - 点缀，少量
+        '65, 105, 225', '138, 43, 226', '0, 191, 255', '218, 112, 214', '176, 224, 230', '255, 215, 000'
     ];
 
     let currentRGB = colors['0'];
-    let lastGesture = '0'; // 初始状态设为 '0'
+    let lastGesture = '0'; 
     let time = 0;
+    const phi = Math.PI * (3 - Math.sqrt(5)); 
 
     function initSize() {
         width = canvas.width = window.innerWidth;
@@ -106,8 +101,7 @@
         return { x, y };
     }
 
-
-    // --- 背景星星 (保持不变) ---
+    // --- 背景星星 ---
     class BgParticle {
         constructor() {
             this.x = Math.random() * width; this.y = Math.random() * height;
@@ -125,74 +119,122 @@
         draw() {
             const opacity = (Math.sin(this.flashPhase) + 1) / 2 * 0.8 + 0.1;
             ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            // 背景星星保持微蓝白色，衬托前景
-            ctx.fillStyle = `rgba(200, 220, 255, ${opacity})`; 
-            ctx.fill();
+            ctx.fillStyle = `rgba(200, 220, 255, ${opacity})`; ctx.fill();
         }
     }
 
-
-    // --- 主粒子类 (核心升级：个体颜色属性) ---
+    // --- 主粒子类 ---
     class Particle {
-        constructor() {
+        constructor(index) {
             const galaxyPos = getGalaxyPoint();
             this.x = galaxyPos.x; this.y = galaxyPos.y;
-            this.vx = 0; this.vy = 0;
             this.tx = this.x; this.ty = this.y;
             this.baseSize = Math.random() * 3 + 1.5; 
             this.size = this.baseSize;
-            this.jitterX = (Math.random() - 0.5) * 15; this.jitterY = (Math.random() - 0.5) * 15;
+            
+            // 基础抖动 (用于银河和星球)
+            this.baseJitterX = (Math.random() - 0.5) * 15; 
+            this.baseJitterY = (Math.random() - 0.5) * 15;
+            
             this.phase = Math.random() * Math.PI * 2; 
+            this.index = index;
+            this.depthZ = 0.5;
 
-            // ★★★ 核心改动：给每个粒子随机分配一个银河颜色 ★★★
-            // 稍微加一点随机性，让金色出现得少一点
             let paletteIndex = Math.floor(Math.random() * galaxyPalette.length);
-            if (galaxyPalette[paletteIndex] === '255, 215, 000' && Math.random() > 0.2) {
-                 paletteIndex = 0; // 80% 概率把金色替换成主蓝色，避免金色太多
-            }
+            if (galaxyPalette[paletteIndex] === '255, 215, 000' && Math.random() > 0.2) paletteIndex = 0;
             this.myGalaxyColor = galaxyPalette[paletteIndex];
         }
 
         update() {
             const baseBeat = 1 + Math.sin(time * 2 + this.phase) * 0.15;
-            this.size = this.baseSize * baseBeat;
+            let targetSize = this.baseSize * baseBeat;
 
             if (this.tx !== null && this.ty !== null) {
                 let targetX = this.tx; let targetY = this.ty;
-                if (lastGesture === 'heart') {
+                
+                // 默认使用基础抖动
+                let currentJitterX = this.baseJitterX;
+                let currentJitterY = this.baseJitterY;
+
+                // --- 逻辑分支 ---
+                if (lastGesture === '5') {
+                    // 星球逻辑 (保持不变)
+                    const centerX = width / 2; const centerY = height / 2;
+                    const radius = Math.min(width, height) * 0.3; 
+                    const rotationSpeed = time * 0.5; 
+                    const y_raw = 1 - (this.index / (particleCount - 1)) * 2;
+                    const radius_at_y = Math.sqrt(1 - y_raw * y_raw);
+                    const theta = phi * this.index;
+                    let x3d = Math.cos(theta) * radius_at_y * radius;
+                    let y3d = y_raw * radius;
+                    let z3d = Math.sin(theta) * radius_at_y * radius;
+                    let rotatedX = x3d * Math.cos(rotationSpeed) - z3d * Math.sin(rotationSpeed);
+                    let rotatedZ = x3d * Math.sin(rotationSpeed) + z3d * Math.cos(rotationSpeed);
+                    targetX = centerX + rotatedX;
+                    targetY = centerY + y3d;
+                    const normalizedZ = (rotatedZ + radius) / (2 * radius);
+                    this.depthZ = normalizedZ;
+                    targetSize = this.baseSize * (0.4 + normalizedZ * 1.2);
+
+                } else if (lastGesture === 'heart') {
+                    // ★★★ 心形逻辑修复 ★★★
                     const centerX = width / 2;
                     const centerY = height / 2 + (Math.min(width, height) / 35) * 5;
                     const bigHeartBeat = 1 + Math.abs(Math.sin(time * 3)) * 0.08;
+                    
                     let dx = this.tx - centerX; let dy = this.ty - centerY;
                     targetX = centerX + dx * bigHeartBeat; targetY = centerY + dy * bigHeartBeat;
-                    targetX += this.jitterX; targetY += this.jitterY;
-                    this.size *= bigHeartBeat;
+                    
+                    // ★ 关键修复：心形模式下，强制把抖动设为 0 或者非常小
+                    // 这样线条就会非常清晰，不会像虫子一样蠕动
+                    currentJitterX = 0;
+                    currentJitterY = 0;
+                    
+                    targetSize = this.baseSize * bigHeartBeat * 0.8; // 稍微变小一点，更精致
+                    this.depthZ = 0.8; 
+
                 } else if (lastGesture === '0') {
+                     // 银河模式：保留抖动
                      targetX += (Math.random()-0.5)*2; targetY += (Math.random()-0.5)*2;
+                     this.depthZ = 0.5;
+                } else {
+                    // 数字模式：减少抖动，让数字清晰
+                    currentJitterX *= 0.2;
+                    currentJitterY *= 0.2;
+                    this.depthZ = 0.8;
                 }
+
+                // 应用最终坐标 (加上当前允许的抖动)
+                targetX += currentJitterX;
+                targetY += currentJitterY;
+
+                this.size = targetSize;
                 this.x += (targetX - this.x) * 0.1;
                 this.y += (targetY - this.y) * 0.1;
             }
         }
 
-        // --- ★★★ 核心改动：绘制时智能选择颜色 ★★★ ---
         draw() {
-            // 决定当前使用哪个颜色：如果是银河状态('0')，用自己的颜色；否则用全局统一颜色
             const colorToUse = lastGesture === '0' ? this.myGalaxyColor : currentRGB;
             
-            const glowOpacity = lastGesture === '0' ? 0.2 : 0.25;
+            let depthAlpha = 0.3 + this.depthZ * 0.7; 
+            if (lastGesture === '0') depthAlpha = 0.9; 
+
+            const glowOpacity = (lastGesture === '0' ? 0.2 : 0.25) * depthAlpha;
+            const coreOpacity = 0.9 * depthAlpha;
+
             ctx.fillStyle = `rgba(${colorToUse}, ${glowOpacity})`; 
             drawHeartPath(ctx, this.x, this.y, this.size * 3); ctx.fill();
-            ctx.fillStyle = `rgba(${colorToUse}, 0.9)`;
+            ctx.fillStyle = `rgba(${colorToUse}, ${coreOpacity})`;
             drawHeartPath(ctx, this.x, this.y, this.size * 1.2); ctx.fill();
         }
     }
 
     initSize();
-    for(let i=0; i<particleCount; i++) particles.push(new Particle());
+    for(let i=0; i<particleCount; i++) particles.push(new Particle(i));
     for(let i=0; i<bgParticleCount; i++) bgParticles.push(new BgParticle());
 
-    // --- 点阵生成 (保持不变) ---
+    // --- 点阵生成 ---
     function getPoints(type) {
         const points = [];
         if (type === 'heart') {
@@ -204,7 +246,7 @@
                 const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
                 points.push({ x: centerX + x * scale, y: centerY + y * scale });
             }
-        } else {
+        } else if (type !== '5') { 
             const tCanvas = document.createElement('canvas');
             tCanvas.width = width; tCanvas.height = height;
             const tCtx = tCanvas.getContext('2d');
@@ -229,18 +271,18 @@
         lastGesture = type;
 
         if (type === '0') {
-            // 回归银河：不需要设置全局 currentRGB，因为粒子会用自己的颜色
-            gestureNameSpan.style.color = `rgb(255, 255, 255)`; // 状态栏文字变白
+            gestureNameSpan.style.color = `rgb(255, 255, 255)`; 
             particles.forEach(p => {
                 const galaxyPos = getGalaxyPoint();
                 p.tx = galaxyPos.x; p.ty = galaxyPos.y;
             });
+        } else if (type === '5') {
+            currentRGB = colors['5'];
+            gestureNameSpan.style.color = `rgb(${colors['5']})`;
         } else {
-            // 变成数字/心形：设置全局颜色
             currentRGB = colors[type];
             const points = getPoints(type);
             if (points.length === 0 && type !== 'heart') return;
-
             gestureNameSpan.style.color = `rgb(${colors[type]})`; 
             particles.forEach((p, i) => {
                 const target = points[i % points.length];
@@ -254,17 +296,21 @@
         ctx.clearRect(0, 0, width, height);
         ctx.globalCompositeOperation = 'lighter'; 
         bgParticles.forEach(p => { p.update(); p.draw(); });
+        if (lastGesture === '5') {
+            particles.sort((a, b) => a.depthZ - b.depthZ);
+        }
         particles.forEach(p => { p.update(); p.draw(); });
         requestAnimationFrame(animate);
     }
     animate();
 
-    // --- AI 识别 (保持不变) ---
+    // --- AI 识别 ---
     function calcDistance(p1, p2) {
         return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
     function countExtendedFingers(landmarks) {
         let count = 0;
+        if (landmarks[4].x > landmarks[3].x) count++; 
         [8, 12, 16, 20].forEach((tipIdx, i) => {
             if (landmarks[tipIdx].y < landmarks[[6, 10, 14, 18][i]].y) count++;
         });
@@ -277,17 +323,21 @@
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const lm = results.multiHandLandmarks[0];
             const thumbIndexDist = calcDistance(lm[4], lm[8]);
+            
             if (thumbIndexDist < 0.09) {
                 gestureNameSpan.innerText = "比心 ❤️";
-                triggerMorph('heart');
-                return; 
+                triggerMorph('heart'); return; 
             }
+
             const fingers = countExtendedFingers(lm);
-            if (fingers >= 1 && fingers <= 4) {
+            if (fingers === 5) {
+                gestureNameSpan.innerText = "手掌张开 (星球崛起)";
+                triggerMorph('5'); 
+            } else if (fingers >= 1 && fingers <= 4) {
                 gestureNameSpan.innerText = `数字 ${fingers}`;
                 triggerMorph(fingers.toString());
             } else {
-                gestureNameSpan.innerText = "多彩星河"; 
+                gestureNameSpan.innerText = "手掌闭合 (璀璨星河)";
                 triggerMorph('0');
             }
         } else {
@@ -298,9 +348,7 @@
 
     const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 0, 
-        minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+        maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
     });
     hands.onResults(onResults);
 
